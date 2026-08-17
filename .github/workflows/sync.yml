@@ -20,24 +20,38 @@ jobs:
           persist-credentials: false
 
       - name: Setup SSH deploy key
+        shell: bash
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SYNC_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
+
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Sync upstream
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git remote set-url origin git@github.com:${{ github.repository }}.git
-          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream https://github.com/deepseek-ai/deepseek-harness.git
+          else
+            git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          fi
 
           git fetch upstream master
           git checkout master
           git merge upstream/master --no-edit
 
-          git push origin master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
+            git push origin master
