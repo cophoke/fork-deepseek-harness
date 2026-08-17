@@ -6,18 +6,38 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   sync_with_upstream:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Sync fork with upstream
+      - name: Checkout target repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup SSH deploy key
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SSH_PRIVATE_KEY: ${{ secrets.SYNC_SSH_KEY }}
         run: |
-          gh api \
-            --method POST \
-            "/repos/${{ github.repository }}/merge-upstream" \
-            -f branch=master
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Sync upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote set-url origin git@github.com:${{ github.repository }}.git
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+
+          git fetch upstream master
+          git checkout master
+          git merge upstream/master --no-edit
+
+          git push origin master
